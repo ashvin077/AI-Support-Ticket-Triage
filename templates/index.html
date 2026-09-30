@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% macro bars(title, items, cat=false) %}
+<section class="card">
+  <h3>{{ title }}</h3>
+  {% for i in items %}
+  <div class="bar-row">
+    <span>{{ i.label }}</span>
+    <div class="bar-track"><div class="bar-fill {{ 'fill-cat' if cat else 'fill-' ~ (i.label | lower) }}" style="width: {{ i.pct }}%"></div></div>
+    <span class="bar-val">{{ i.value }}</span>
+  </div>
+  {% endfor %}
+</section>
+{% endmacro %}
+
+{% macro options(items) %}
+{% for i in items %}<option value="{{ i.label }}">{{ i.label }}</option>{% endfor %}
+{% endmacro %}
+
+{% block subtitle %}{% if updated %}Last triaged {{ updated }}{% else %}No batch triaged yet{% endif %}{% endblock %}
+
+{% block actions %}
+<button class="btn primary js-run" type="button">{{ 'Re-run triage' if tickets else 'Run triage' }}</button>
+{% endblock %}
+
+{% block content %}
+<div id="error" class="alert" role="alert" hidden></div>
+<div id="busy" class="notice" role="status" hidden>The agent is reading the messages and drafting replies. This can take up to a minute.</div>
+
+{% if not tickets %}
+<section class="empty">
+  <h2>No tickets triaged yet</h2>
+  <p>Run triage to fetch the customer messages and let the agent classify each one.</p>
+  <button class="btn primary js-run" type="button">Run triage</button>
+</section>
+{% else %}
+
+<section class="kpis" aria-label="Summary">
+  <div class="card kpi"><div class="n">{{ stats.total }}</div><div class="l">Tickets in batch</div></div>
+  <div class="card kpi {{ 'alert-kpi' if stats.critical }}"><div class="n">{{ stats.critical }}</div><div class="l">Critical tickets</div></div>
+  <div class="card kpi"><div class="n">{{ stats.urgent }}</div><div class="l">Critical or High urgency</div></div>
+  <div class="card kpi"><div class="n">{{ stats.upset_pct }}%</div><div class="l">Angry or frustrated customers</div></div>
+</section>
+
+<section class="charts" aria-label="Breakdowns">
+  {{ bars("Urgency", stats.urgency) }}
+  {{ bars("Category", stats.category, cat=true) }}
+  {{ bars("Sentiment", stats.sentiment) }}
+  <section class="card">
+    <h3>Urgency by category</h3>
+    <table class="heat">
+      <thead><tr><th></th>{% for c in stats.heat_cols %}<th title="{{ c }}">{{ c[:4] }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for row in stats.heat %}
+        <tr><th class="row">{{ row.label }}</th>
+        {% for c in row.cells %}
+          <td {% if c.value %}style="background: rgba(11,110,110,{{ c.alpha }}); color: {{ '#fff' if c.alpha > 0.55 else 'inherit' }}"{% endif %}>{{ c.value if c.value else '' }}</td>
+        {% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</section>
+
+<div class="toolbar">
+  <h2>Tickets <span class="meta" id="count"></span></h2>
+  <input class="field search" id="f-q" type="search" placeholder="Search messages" aria-label="Search messages">
+  <select class="field" id="f-urgency" aria-label="Filter by urgency"><option value="">All urgencies</option>{{ options(stats.urgency) }}</select>
+  <select class="field" id="f-category" aria-label="Filter by category"><option value="">All categories</option>{{ options(stats.category) }}</select>
+  <select class="field" id="f-sentiment" aria-label="Filter by sentiment"><option value="">All sentiments</option>{{ options(stats.sentiment) }}</select>
+  <select class="field" id="f-sort" aria-label="Sort tickets">
+    <option value="urgency">Sort: most urgent</option>
+    <option value="id">Sort: ticket ID</option>
+    <option value="sentiment">Sort: sentiment</option>
+    <option value="category">Sort: category</option>
+  </select>
+  <button class="btn" id="clear" type="button">Clear</button>
+  <button class="btn" id="export" type="button">Export CSV</button>
+</div>
+
+<div class="split">
+  <div>
+    <div class="list" id="list">
+      {% for t in tickets %}
+      <button type="button" class="row stripe-{{ t.urgency | lower }}" data-id="{{ t.id }}" aria-pressed="false">
+        <div class="row-head">
+          <span class="row-id">#{{ t.id }}</span>
+          <span class="pill urg-{{ t.urgency | lower }}">{{ t.urgency }}</span>
+          <span class="pill sen-{{ t.sentiment | lower }}">{{ t.sentiment }}</span>
+          <span class="pill cat">{{ t.category }}</span>
+        </div>
+        <div class="row-msg">{{ t.message }}</div>
+      </button>
+      {% endfor %}
+    </div>
+    <div class="none" id="none" hidden>No tickets match these filters. Clear a filter to see more.</div>
+  </div>
+
+  <aside class="detail" id="detail" aria-live="polite">
+    <div class="card">
+      <h3 id="d-title">Ticket</h3>
+      <div class="badges">
+        <span class="pill" id="d-urg"></span><span class="pill" id="d-sen"></span><span class="pill cat" id="d-cat"></span>
+      </div>
+      <span class="label">Customer message</span>
+      <p class="quote" id="d-msg"></p>
+      <label class="label" for="d-reply">Suggested reply (edit before sending)</label>
+      <textarea class="reply" id="d-reply"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="d-copy" type="button">Copy reply</button>
+        <button class="btn" id="d-reset" type="button">Reset to AI draft</button>
+        <span class="meta" id="d-status" role="status"></span>
+      </div>
+      <p class="hint">Drafted by AI. Confirm any offers, timelines or policy details before sending.</p>
+    </div>
+  </aside>
+</div>
+{% endif %}
+
+<script id="payload" type="application/json">{{ payload | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', path='/app.js') }}"></script>{% endblock %}

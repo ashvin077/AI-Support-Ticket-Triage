@@ -1,0 +1,25 @@
+# environment variables
+.env
+
+# Python generated files
+__pycache__/
+
+# empty customer_messages folder
+customer_messages/
+
+# Virtual Environment
+.venv
+
+# jupyter notebook
+notebook/
+
+# streamlit testing app
+app.py
+
+#dummy prompt
+prompts.py
+
+# Support Tickets
+support_tickets.json
+triage_results.json
+
