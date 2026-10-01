@@ -2,8 +2,8 @@
 
 A web app that reads a batch of 20 customer support messages from Postgres, uses an AI agent to triage each one, and presents the results in a dashboard for a support agent.
 
-**Live app:** <https://YOUR-APP-NAME.onrender.com>
-**Repository:** <https://github.com/ashvin077/YOUR-REPO-NAME>
+**Live app:** <https://ticket-triage-zv5h.onrender.com/>
+**Repository:** <https://github.com/ashvin077/AI-Support-Ticket-Triage.git>
 
 > The app is hosted on a free tier that sleeps when idle. The first load after a quiet period can take about a minute. If the dashboard is empty, click **Run triage**. OR, if the app has fetched previously stored triage messages and if you want to view new messages details, you have to click **Re-run triage**.
 
