@@ -1,5 +1,6 @@
 import uuid
 from collections import Counter
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,9 +8,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import json
 
 from src.agent.agent import agent
+from src import config
+from sqlalchemy import create_engine, text
+
 
 URGENCIES = ["Critical", "High", "Medium", "Low"]
 CATEGORIES = ["Billing", "Technical", "Account", "Feedback", "Other"]
@@ -18,7 +21,6 @@ CANON = {v.lower(): v for v in URGENCIES + CATEGORIES + SENTIMENTS}
 CANON["techical"] = "Technical"  # the prompt spells it this way
 
 BASE = Path(__file__).parent
-STORE = BASE / "triage_results.json"
 
 
 def run_agent() -> str:
@@ -51,10 +53,42 @@ def parse_table(md: str) -> list[dict]:
     return rows
 
 
+# Results live in Postgres, so they survive restarts and redeploys on any host.
+# pool_pre_ping avoids errors from connections Neon closed while the database was idle.
+store_engine = create_engine(config.NEON_DATABASE_URL, pool_pre_ping=True)
+
+
+def init_store() -> None:
+    with store_engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS triage_results (
+                id INTEGER PRIMARY KEY,
+                message TEXT NOT NULL,
+                urgency TEXT NOT NULL,
+                category TEXT NOT NULL,
+                sentiment TEXT NOT NULL,
+                suggested_reply TEXT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )"""))
+
+
 def load_store() -> dict:
-    if STORE.exists():
-        return json.loads(STORE.read_text(encoding="utf-8"))
-    return {"tickets": [], "updated_at": None}
+    with store_engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT id, message, urgency, category, sentiment, suggested_reply, updated_at "
+            "FROM triage_results ORDER BY id")).mappings().all()
+    tickets = [{k: v for k, v in r.items() if k != "updated_at"} for r in rows]
+    updated = max((r["updated_at"] for r in rows), default=None)
+    return {"tickets": tickets, "updated_at": updated.isoformat() if updated else None}
+
+
+def save_store(tickets: list[dict]) -> None:
+    """Replace the saved batch with a new one in a single transaction."""
+    with store_engine.begin() as conn:
+        conn.execute(text("DELETE FROM triage_results"))
+        conn.execute(text(
+            "INSERT INTO triage_results (id, message, urgency, category, sentiment, suggested_reply)"
+            "VALUES (:id, :message, :urgency, :category, :sentiment, :suggested_reply)"), tickets)
 
 
 def build_stats(tickets: list[dict]) -> dict:
@@ -87,7 +121,13 @@ def build_stats(tickets: list[dict]) -> dict:
     }
 
 
-app = FastAPI(title="Ticket Triage")
+@asynccontextmanager
+async def lifespan(_app):
+    init_store()
+    yield
+
+
+app = FastAPI(title="Ticket Triage", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
@@ -122,6 +162,9 @@ def triage():
     tickets = parse_table(raw)
     if not tickets:
         raise HTTPException(502, "The agent replied, but no ticket rows could be read. Run triage again.")
-    data = {"tickets": tickets, "updated_at": datetime.now(timezone.utc).isoformat()}
-    STORE.write_text(json.dumps(data), encoding="utf-8")
-    return data
+    tickets = list({t["id"]: t for t in tickets}.values())  # one row per ticket id
+    try:
+        save_store(tickets)
+    except Exception as exc:
+        raise HTTPException(500, f"Triage finished but the results could not be saved: {exc}")
+    return load_store()

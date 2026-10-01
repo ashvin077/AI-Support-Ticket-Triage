@@ -1,17 +1,18 @@
-# Support Inbox: AI Support Ticket Triage
+# Support Inbox: AI Ticket Triage
 
 A web app that reads a batch of 20 customer support messages from Postgres, uses an AI agent to triage each one, and presents the results in a dashboard for a support agent.
 
-**Live app:** <https://ticket-triage-zv5h.onrender.com/>
-**Repository:** <https://github.com/ashvin077/AI-Support-Ticket-Triage.git>
+**Live app:** <https://YOUR-APP-NAME.onrender.com>
+**Repository:** <https://github.com/ashvin077/YOUR-REPO-NAME>
 
-> The app is hosted on a free tier that sleeps when idle. The first load after a quiet period can take about a minute. If the dashboard is empty, click **Run triage**.
+> The app is hosted on a free tier that sleeps when idle. The first load after a quiet period can take about a minute. If the dashboard is empty, click **Run triage**. OR, if the app has fetched previously stored triage messages and if you want to view new messages details, you have to click **Re-run triage**.
 
 ## What it does
 
 For every message the AI produces:
 
 | Field | Values |
+|----------------|
 | Urgency | Critical, High, Medium, Low |
 | Category | Billing, Technical, Account, Feedback, Other |
 | Sentiment | Angry, Frustrated, Neutral, Happy |
@@ -30,6 +31,7 @@ For every message the AI produces:
 ## Tech stack
 
 | Layer | Technology |
+|--------------------|
 | Backend | Python, FastAPI, Uvicorn |
 | AI agent | LangChain `create_agent`, LangGraph, Groq (`openai/gpt-oss-120b`) |
 | Database | PostgreSQL (Neon), SQLAlchemy, psycopg |
@@ -41,7 +43,7 @@ For every message the AI produces:
 1. `GET /` renders the dashboard on the server with Jinja2 from the last saved results.
 2. **Run triage** calls `POST /api/triage`.
 3. The agent uses a tool to fetch every row of `customer_messages` from Postgres, then returns a table with the four added columns.
-4. The backend parses that table into structured tickets, normalises the labels, and saves the batch.
+4. The backend parses that table into structured tickets, normalises the labels, and saves the batch in a `triage_results` table in Postgres, so results survive restarts and redeploys.
 5. The page reloads with the new results. Filtering, sorting and the detail panel run in the browser.
 
 ## Project structure
@@ -63,7 +65,6 @@ For every message the AI produces:
 │   ├── styles.css
 │   └── app.js
 ├── requirements.txt
-├── .env.example
 └── README.md
 ``
 
@@ -82,7 +83,9 @@ GROQ_API_KEY=your_key_here
 DATABASE_URL=postgresql://user:password@host/ticket_triage?sslmode=require
 ``
 
-The database needs a `customer_messages` table with `id` and `message` columns.
+If you choose variable name: 'DATABASE_URL', then you have to replace the variable name from 'config.NEON_DATABASE_URL' TO 'config.DATABASE_URL'.
+
+The database needs a `customer_messages` table with `id` and `message` columns. The app creates a `triage_results` table on startup, so the database user must be allowed to create tables and write to it.
 
 ```bash
 uvicorn main:app --reload --port 8000
@@ -99,7 +102,7 @@ Open <http://localhost:8000> and click **Run triage**.
 
 ## Prompt engineering
 
-The full system prompt is in `main.py`. The agent's output must be consistent and structured across all 20 messages, and it should not invent information.
+The full system prompt is in `src/prompt.py`. The agent's output must be consistent and structured across all 20 messages, and it should not invent information.
 
 ### Version 1: original prompt
 
@@ -180,6 +183,5 @@ If a message mixes praise and a complaint, choose the emotion attached to the ma
 
 ## Known limitations
 
-- The free host sleeps when idle, so the first request after a quiet period is slow.
-- Triage results are saved to a file on the server, and the free host's disk is wiped on restart. After a restart the dashboard may show the empty state until **Run triage** is clicked again.
+- The free host sleeps when idle, so the first request after a quiet period is slow. Saved results are kept in Postgres and are shown again once the app wakes.
 - The AI's labels and replies are suggestions for a human agent and are not verified.
