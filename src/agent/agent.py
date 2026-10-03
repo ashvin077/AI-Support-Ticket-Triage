@@ -19,11 +19,11 @@ engine = create_engine(config.NEON_DATABASE_URL)
 @tool
 def get_customers_messages():
     """
-        Search in the customer_messages table of ticket_triage database, and fetch all the records (that is '20') in that table with their 'id'
-        and 'message'. 
+        From the 'customer_messages' table of 'ticket_triage' database, fetch all the '20' records in that table with their 'id'
+        and 'message'.
     Returns: a json array of 'id' and 'message'.
     """
-    sql_query = """SELECT * FROM customer_messages"""
+    sql_query = """SELECT * FROM customer_messages LIMIT 20;"""
     
     sql_query = text(sql_query)
     
