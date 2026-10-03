@@ -1,6 +1,6 @@
 # Support Inbox: AI Ticket Triage
 
-A web app that reads a batch of 20 customer support messages from Postgres, uses an AI agent to triage each one, and presents the results in a dashboard for a support agent.
+A web app that reads a batch of 20 customer support messages from Postgres, uses an AI agent to triage each one, and presents the results in a dashboard for a support agent. Currently app fetches all 20 messages, but in future if we want, we can change the no.of batch.
 
 **Live app:** <https://ticket-triage-zv5h.onrender.com/>
 **Repository:** <https://github.com/ashvin077/AI-Support-Ticket-Triage.git>

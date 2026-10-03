@@ -2,6 +2,7 @@ import uuid
 from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -139,7 +140,7 @@ def index(request: Request):
     tickets = sorted(data["tickets"], key=lambda t: (rank.get(t["urgency"], 99), t["id"]))
     updated = None
     if data["updated_at"]:
-        updated = datetime.fromisoformat(data["updated_at"]).astimezone().strftime("%d %b %Y, %H:%M")
+        updated = datetime.fromisoformat(data["updated_at"]).astimezone(ZoneInfo("Asia/Kathmandu")).strftime("%d %b %Y, %H:%M")
     return templates.TemplateResponse(request, "index.html", {
         "tickets": tickets,
         "stats": build_stats(tickets),
