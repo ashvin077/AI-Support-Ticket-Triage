@@ -33,10 +33,28 @@ For every message the AI produces:
 | Layer | Technology |
 |--------------------|
 | Backend | Python, FastAPI, Uvicorn |
-| AI agent | LangChain `create_agent`, LangGraph, Groq (`openai/gpt-oss-120b`) |
+| AI agent | LangChain `create_agent`, LangGraph, Groq (`openai/gpt-oss-120b`) | Fallback Model (`google/gemma-4-31b-it`) |
 | Database | PostgreSQL (Neon), SQLAlchemy, psycopg |
 | Frontend | Jinja2 templates, HTML, CSS, vanilla JavaScript |
 | Hosting | Render (app), Neon (database) |
+
+## Why this tech stack?
+
+| Choice | Why |
+|--------------|
+| **Python + FastAPI** | The AI agent, the database access and the web server all live in one language and one codebase. FastAPI is lightweight, handles JSON endpoints and server-rendered pages together, and gives clear HTTP errors (for example, a 429 when the AI provider's limit is reached). |
+| **LangChain + LangGraph** | The triage agent uses a tool to read the customer messages straight from the database, then returns the triage table. LangChain's `create_agent` handles the tool calling, and LangGraph provides the conversation memory, with a fresh thread for every run. |
+| **Groq (`openai/gpt-oss-120b`) with a fallback model** | Groq gives fast responses, which matters when 20 messages and replies are generated in one run. A second model is used automatically if the main one fails or hits its token limit, and the dashboard tells the user when this happens. |
+| **PostgreSQL on Neon + SQLAlchemy** | The support messages are relational data, so Postgres is a natural fit. Neon is a hosted Postgres with a free tier, which lets the deployed app reach the same data as local development. Triage results are saved in a `triage_results` table, so they survive restarts and the free host's temporary disk. |
+| **Jinja2 templates** | The dashboard is rendered on the server, so the page loads with the summary cards, charts and ticket list already filled in. It needs no separate front-end build step, which keeps deployment to a single service. |
+| **Vanilla JavaScript + CSS** | Search, filters, sorting, the detail panel, reply editing and CSV export all run in the browser without extra libraries. The charts are built with plain HTML and CSS, so there are no chart-library dependencies to load. The IBM Plex Sans font and a restrained colour palette give a clean, professional look. |
+| **Render** | It deploys a FastAPI app straight from a GitHub repository, and every push redeploys automatically. Its free tier meets the "live, not localhost" requirement. |
+
+### Trade-offs
+
+- **One agent call for all 20 messages:** it keeps the code simple and matches the original agent design. Label consistency is handled in the prompt, with explicit rules for urgency and sentiment.
+- **Server-rendered pages instead of a React app:** this means fewer moving parts and a faster first load, but less client-side state management. For a single-page dashboard with one view, that was a fair exchange.
+- **Free tiers:** the host sleeps when idle, so the first load can take about a minute. The AI provider also has a daily token limit, which is why saved results and a fallback model are part of the design.
 
 ## How it works
 
@@ -412,3 +430,7 @@ IMPORTANT: Before returning the final answer, internally verify:\n
 
 - The free host sleeps when idle, so the first request after a quiet period is slow. Saved results are kept in Postgres and are shown again once the app wakes.
 - The AI's labels and replies are suggestions for a human agent and are not verified.
+
+## When there is enough time for this support agent, I would correct the model consistency more accurately. It correctly classifies almost all category, urgency, sentiment, but still sometime there is change in numbers
+
+## Challenge: My main LLM model hits it's token limit when testing multiple times. When I tried to 're-run triage' an error occurred. So, I added another fallback model in case of main model failure. I used try-except block to catch error and corrected it. Now, if somehow main model fails, Fallback model works properly
