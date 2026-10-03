@@ -26,6 +26,7 @@ DATABASE_USER_NAME = _get_secret("DATABASE_USER_NAME")
 DATABASE_PASSWORD = _get_secret("DATABASE_PASSWORD")
 GROQ_API_KEY= _get_secret("GROQ_API_KEY")
 NEON_DATABASE_URL= _get_secret("NEON_DATABASE_URL")
+OPEN_ROUTER_API_KEY= _get_secret("OPEN_ROUTER_API_KEY")
 
 database_url = f"postgresql://postgres:{DATABASE_PASSWORD}@localhost:{DATABASE_USER_NAME}"
 

@@ -2,6 +2,13 @@
   const $ = (s) => document.querySelector(s);
   const data = JSON.parse($("#payload").textContent);
 
+  const note = sessionStorage.getItem("triageNote");
+  if (note) {
+  $("#note").textContent = note;
+  $("#note").hidden = false;
+  sessionStorage.removeItem("triageNote");
+  }
+
   // ---- run triage (also available on the empty state) ----
   const runBtns = document.querySelectorAll(".js-run");
   runBtns.forEach((btn) =>
@@ -13,20 +20,31 @@
         b.disabled = true;
         b.innerHTML = '<span class="spinner"></span>Triaging…';
       });
+
+      const poll = setInterval(async () => {
       try {
-        const res = await fetch("/api/triage", { method: "POST" });
-        if (!res.ok) {
-          let msg;
-          try { msg = (await res.json()).detail; } catch (_) {}
-          throw new Error(msg || `Request failed (${res.status})`);
-        }
-        location.reload();
-      } catch (err) {
-        $("#error").textContent = err.message;
-        $("#error").hidden = false;
-        $("#busy").hidden = true;
-        runBtns.forEach((b) => { b.disabled = false; b.textContent = b.dataset.label; });
+        const s = await (await fetch("/api/triage/status")).json();
+        if (s.message) $("#busy").textContent = s.message;
+      } catch (_) {}
+    }, 1500);
+    try {
+      const res = await fetch("/api/triage", { method: "POST" });
+      if (!res.ok) {
+        let msg;
+        try { msg = (await res.json()).detail; } catch (_) {}
+        throw new Error(msg || `Request failed (${res.status})`);
       }
+      const s = await (await fetch("/api/triage/status")).json();
+      if (s.fallback) sessionStorage.setItem("triageNote", "These results were generated with a fallback model because the main model reached its daily usage limit.");
+      location.reload();
+    } catch (err) {
+      $("#error").textContent = err.message;
+      $("#error").hidden = false;
+      $("#busy").hidden = true;
+      runBtns.forEach((b) => { b.disabled = false; b.textContent = b.dataset.label; });
+    } finally {
+      clearInterval(poll);
+    }
     })
   );
 

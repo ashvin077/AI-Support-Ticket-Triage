@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from src.agent.agent import agent
+from src.agent.agent import agent, fallback_agent
 from src import config
 from sqlalchemy import create_engine, text
 
@@ -22,15 +22,28 @@ CANON = {v.lower(): v for v in URGENCIES + CATEGORIES + SENTIMENTS}
 CANON["techical"] = "Technical"  # the prompt spells it this way
 
 BASE = Path(__file__).parent
+STATUS = {"message": "", "fallback": False}
 
 
 def run_agent() -> str:
     """Invoke the agent as in the original script (fresh thread per run)."""
-    thread = {"configurable": {"thread_id": f"triage-{uuid.uuid4()}"}}
-    result = agent.invoke(
-        {"messages": [{"role": "user", "content": ("Show the customer messages details to me")}]},
-        thread,
+    
+    try:
+        thread = {"configurable": {"thread_id": f"triage-{uuid.uuid4()}"}}
+        result = agent.invoke(
+            {"messages": [{"role": "user", "content": ("Show the customer messages details to me")}]},
+            thread,
+        )
+    except Exception as e:
+        print(f"An Error Occurred While fetching messsages: {e}")
+        print("\nTrying with Different Model.....")
+        STATUS.update(message="The main model is temporarily unavailable. Trying with a fallback model…", fallback=True)
+        thread = {"configurable": {"thread_id": f"triage-{uuid.uuid4()}"}}
+        result = fallback_agent.invoke(
+            {"messages": [{"role": "user", "content": ("Show the customer messages details to me")}]},
+            thread,
     )
+    
     return result["messages"][-1].content
 
 
@@ -154,12 +167,27 @@ def get_tickets():
     return load_store()
 
 
+@app.get("/api/triage/status")
+def triage_status():
+    return STATUS
+
+
 @app.post("/api/triage")
 def triage():
+    STATUS.update(message="", fallback=False)
     try:
         raw = run_agent()
     except Exception as exc:
-        raise HTTPException(502, f"The triage agent failed: {exc}")
+        print(f"Triage failed: {exc}")
+        err = str(exc).lower()
+        if "429" in err or "rate limit" in err:
+            if "per day" in err or "tpd" in err:
+                msg = "Both AI models have reached their daily usage limits. Your last saved results are still shown. Please try again after 30 mins."
+            else:
+                msg = "The AI models are busy right now (rate limit). Please wait a minute and try again."
+            raise HTTPException(429, msg)
+        raise HTTPException(502, "The triage agent failed. Please try again.")
+    
     tickets = parse_table(raw)
     if not tickets:
         raise HTTPException(502, "The agent replied, but no ticket rows could be read. Run triage again.")
