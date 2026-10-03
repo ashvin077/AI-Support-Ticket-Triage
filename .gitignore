@@ -23,3 +23,6 @@ prompts.py
 support_tickets.json
 triage_results.json
 
+# vs-code folder
+.vscode/
+

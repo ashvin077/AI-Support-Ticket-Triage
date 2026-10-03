@@ -69,7 +69,7 @@ def init_store() -> None:
                 category TEXT NOT NULL,
                 sentiment TEXT NOT NULL,
                 suggested_reply TEXT NOT NULL,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                updated_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Kathmandu')
             )"""))
 
 
@@ -140,7 +140,7 @@ def index(request: Request):
     tickets = sorted(data["tickets"], key=lambda t: (rank.get(t["urgency"], 99), t["id"]))
     updated = None
     if data["updated_at"]:
-        updated = datetime.fromisoformat(data["updated_at"]).astimezone(ZoneInfo("Asia/Kathmandu")).strftime("%d %b %Y, %H:%M")
+        updated = datetime.fromisoformat(data["updated_at"]).strftime("%d %b %Y, %H:%M")
     return templates.TemplateResponse(request, "index.html", {
         "tickets": tickets,
         "stats": build_stats(tickets),
