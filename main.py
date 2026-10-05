@@ -25,26 +25,17 @@ BASE = Path(__file__).parent
 STATUS = {"message": "", "fallback": False}
 
 
-def run_agent() -> str:
-    """Invoke the agent as in the original script (fresh thread per run)."""
-    
-    try:
-        thread = {"configurable": {"thread_id": f"triage-{uuid.uuid4()}"}}
-        result = agent.invoke(
-            {"messages": [{"role": "user", "content": ("Show the customer messages details to me")}]},
-            thread,
-        )
-    except Exception as e:
-        print(f"An Error Occurred While fetching messsages: {e}")
-        print("\nTrying with Different Model.....")
-        STATUS.update(message="The main model is temporarily unavailable. Trying with a fallback model…", fallback=True)
-        thread = {"configurable": {"thread_id": f"triage-{uuid.uuid4()}"}}
-        result = fallback_agent.invoke(
-            {"messages": [{"role": "user", "content": ("Show the customer messages details to me")}]},
-            thread,
+def run_agent(agent_to_use) -> str:
+    thread = {"configurable": {"thread_id": f"triage-{uuid.uuid4()}"}}
+    result = agent_to_use.invoke(
+        {"messages": [{"role": "user", "content": "Show the customer messages details to me"}]},
+        thread,
     )
-    
     return result["messages"][-1].content
+
+def expected_count() -> int:
+    with store_engine.connect() as conn:
+        return conn.execute(text("SELECT count(*) FROM customer_messages")).scalar_one()
 
 
 def parse_table(md: str) -> list[dict]:
@@ -175,23 +166,30 @@ def triage_status():
 @app.post("/api/triage")
 def triage():
     STATUS.update(message="", fallback=False)
-    try:
-        raw = run_agent()
-    except Exception as exc:
-        print(f"Triage failed: {exc}")
-        err = str(exc).lower()
-        if "429" in err or "rate limit" in err:
-            if "per day" in err or "tpd" in err:
-                msg = "Both AI models have reached their daily usage limits. Your last saved results are still shown. Please try again after 30 mins."
+    want = expected_count()
+    tickets, last_err = [], ""
+    for i, model_agent in enumerate((agent, fallback_agent)):
+        if i == 1:
+            STATUS.update(message="Trying another model…", fallback=True)
+        try:
+            raw = run_agent(model_agent)
+            tickets = list({t["id"]: t for t in parse_table(raw)}.values())
+        except Exception as exc:
+            print(f"Model {i + 1} failed: {exc}")
+            last_err, tickets = str(exc).lower(), []
+            continue
+        if len(tickets) == want:
+            break
+        print(f"Model {i + 1} returned {len(tickets)} of {want} tickets")
+        last_err = "short"
+    else:
+        if "429" in last_err or "rate limit" in last_err:
+            if "per day" in last_err or "tpd" in last_err:
+                msg = "Both AI models have reached their daily usage limits. Your last saved results are still shown. Please try again later."
             else:
                 msg = "The AI models are busy right now (rate limit). Please wait a minute and try again."
             raise HTTPException(429, msg)
-        raise HTTPException(502, "The triage agent failed. Please try again.")
-    
-    tickets = parse_table(raw)
-    if not tickets:
-        raise HTTPException(502, "The agent replied, but no ticket rows could be read. Run triage again.")
-    tickets = list({t["id"]: t for t in tickets}.values())  # one row per ticket id
+        raise HTTPException(502, f"The AI models returned incomplete results ({len(tickets)} of {want} tickets). Nothing was saved. Please try again.")
     try:
         save_store(tickets)
     except Exception as exc:
